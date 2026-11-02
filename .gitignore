@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+.idea/
+.pytest_cache/
+.ruff_cache/
+
+# Dữ liệu khách và kết quả: không bao giờ vào git
+data/*
+!data/README.md
+!data/*/.gitkeep
+backend/storage/*
+!backend/storage/.gitkeep
