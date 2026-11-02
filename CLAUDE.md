@@ -6,7 +6,8 @@ Dự án **CAD2BOM** (tên tạm): đọc bản vẽ CAD hoặc ảnh, ra dữ l
 
 ## Trạng thái hiện tại
 
-- Đang ở giai đoạn đề xuất và thiết kế. **Chưa có hệ thống hay code chạy được.** Hiện chỉ có một tài liệu thiết kế dạng slide HTML: `docs/CAD2BOM_He_thong_E2E.html`.
+- Đang ở giai đoạn thiết kế và dựng khung. **Chưa có xử lý bản vẽ thật nào chạy được.** Đã có: tài liệu thiết kế `docs/CAD2BOM_He_thong_E2E.html`, kế hoạch `docs/PLAN.md`, khung backend FastAPI (chỉ có `/health`), và bản demo UI Streamlit chạy ở **chế độ mô phỏng** (dữ liệu minh họa).
+- **Kế hoạch, pipeline, JSON chuẩn và hợp đồng API nằm ở `docs/PLAN.md`.** Đọc file đó trước khi viết route hay xử lý bản vẽ; đổi hợp đồng API thì hỏi trước vì UI đã bám theo.
 - Mọi KPI đều là **giả thuyết**, chỉ coi là kết quả sau khi đo trong PoC: giảm công dự toán, tăng độ chính xác, bóc khối lượng còn vài phút. Proposal gốc ghi 40–50% công dự toán, tài liệu thiết kế E2E ghi 15–25%; con số chính thức chưa thống nhất với đối tác.
 - Đối tượng đọc tài liệu: đối tác tư vấn (Deloitte Tohmatsu Consulting) và khách hàng ngành xây dựng. Tài liệu hiện viết bằng tiếng Việt.
 
@@ -103,6 +104,7 @@ Tiền xử lý (xoay, khử nhiễu, cắt tile) → detect, segment → OCR �
 ## Tài liệu đang có
 
 - `docs/CAD2BOM_He_thong_E2E.html`: **tài liệu duy nhất cần làm việc.** Bộ slide HTML một file, `lang="vi"`, 13 phần tử `.slide` (1 cover, 1 dark, 11 thường), ảnh nhúng dạng data URI, tiêu đề "AI phân tích bản vẽ CAD → BOM". Không có từ điển dịch en/ja trong file.
+- `docs/PLAN.md`: kế hoạch theo giai đoạn (GĐ0–GĐ5), sơ đồ pipeline, JSON chuẩn, hợp đồng API, câu hỏi mở. Cập nhật khi quyết định đổi.
 - `main.py`: file mẫu mặc định của PyCharm, không phải code sản phẩm. Không dựa vào nó.
 
 ## Cách làm việc với Claude
@@ -123,16 +125,24 @@ Tiền xử lý (xoay, khử nhiễu, cắt tile) → detect, segment → OCR �
 
 ## Build và test
 
-Dùng **uv** quản lý package (Python 3.12, một `pyproject.toml` ở gốc). Không phải git repo.
+Dùng **uv** quản lý package (Python 3.12, một `pyproject.toml` ở gốc). Đã là git repo.
 
 ```
 uv sync                                        # cài dependency
-uv run uvicorn backend.app.main:app --reload   # backend, chạy từ thư mục gốc
-uv run streamlit run ui/app.py                 # UI demo
-uv run pytest                                  # toàn bộ test
-uv run pytest backend/tests/api/test_health.py::test_health   # một test
+uv run uvicorn backend.main:app --reload       # backend, chạy từ thư mục gốc
+uv run streamlit run ui/app.py                 # UI demo (UI_MOCK=1 mặc định, không cần backend)
+uv run pytest                                  # toàn bộ test (backend/tests, ui/tests)
+uv run pytest ui/tests/test_file_kind.py::test_pdf_needs_confirmation   # một test
 uv run ruff check .                            # lint
 uv add <gói>                                   # thêm dependency (--dev cho dev)
 ```
 
-Cấu trúc: `backend/app/` (FastAPI: `api/v1` → `services` → `repositories` → `models`; `schemas`, `workers`, `config`, `core`, `db`), `backend/pipeline/` (`common`, `cad`, `image`, `bom`, chạy độc lập), `backend/eval/`, `ui/` (Streamlit, chỉ gọi API qua `ui/api_client.py`, không import `backend/`), `schema/`, `backend/config`, `data/` và `backend/storage/` (gitignore). `main.py` ở gốc là file mẫu PyCharm.
+Nếu tải gói nặng (PyTorch) bị timeout: đặt `UV_HTTP_TIMEOUT=600`. PyTorch đã cài qua index `cu128` (khai báo `explicit` trong `pyproject.toml`); chưa dùng trong code.
+
+## Cấu trúc
+
+- `backend/`: FastAPI. Luồng một chiều `api/v1` → `services` → `repositories` → `models`; còn `schemas`, `workers`, `config` (settings), `core`, `db`, `tests`. **Không dùng `controllers/`**: file trong `api/v1/` đã là controller, giữ mỏng, chỉ validate rồi gọi service. Chưa có route nào ngoài `/health`.
+- `ui/`: Streamlit, **một màn hình** (`ui/app.py`, hai cột). Trái: tải bản vẽ, xem ảnh. Phải: nút "Hiển thị BOM", stream tiến độ, bảng BOM; chọn một dòng thì hiện thông tin phần tử và khung bbox trên ảnh (nếu là ảnh). UI **chỉ gọi API qua `ui/api_client.py`, không import `backend/`**. Dữ liệu demo ở `ui/sample_data.py` (minh họa; bbox co giãn theo ảnh). Module ở `ui/` được import phẳng (`import api_client`), nên `pyproject.toml` đặt `ui` vào `pythonpath` của pytest.
+- Loại file xác định bằng `ui/file_kind.py`: DWG/DXF → nhánh CAD, PNG/JPG → nhánh ảnh, có cả hai thì ưu tiên CAD. PDF chưa tự phân biệt vector hay scan, nên hỏi người dùng. Route theo nhánh (`/drawings/cad`, `/drawings/image`) và route stream tiến độ là thiết kế dự kiến, xem `docs/PLAN.md` mục 5.
+- `docs/`: tài liệu. `data/`: bản vẽ khách, đáp án chuẩn, dataset (gitignore, không bao giờ commit); `data/README.md` ghi nguồn và giấy phép dataset.
+- Đã bỏ `pipeline/`, `eval/`, `experiments/`, `storage/` cho gọn; thêm lại khi tới giai đoạn cần. Vị trí đề xuất cho code xử lý bản vẽ là `backend/services/{cad,image,bom}/` (chờ nhóm chốt, xem `docs/PLAN.md` mục 6). `main.py` ở gốc là file mẫu PyCharm.

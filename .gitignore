@@ -10,5 +10,3 @@ __pycache__/
 data/*
 !data/README.md
 !data/*/.gitkeep
-backend/storage/*
-!backend/storage/.gitkeep

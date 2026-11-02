@@ -23,12 +23,13 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-pythonpath = ["."]
-testpaths = ["backend/tests"]
+pythonpath = [".", "ui"]
+testpaths = ["backend/tests", "ui/tests"]
 
 [[tool.uv.index]]
 name = "pytorch"
 url = "https://download.pytorch.org/whl/cu128"
+explicit = true
 
 [tool.ruff]
 line-length = 100
